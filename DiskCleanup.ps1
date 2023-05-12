@@ -106,7 +106,7 @@ If (!(Test-Path $ConfigFile)){       #--[ Error out if configuration file doesn'
     $Email.To.Add($Configuration.Settings.DebugUser+"@"+$domain)  #--[ The "main" user who always gets an email ]--
     If (!($Debug)){
         ForEach($Recipient in $Configuration.Settings.Users){   
-            $Email.To.Add("$Recipient@$Domain")   #--[ Each other user to get the email when not debugging ]--
+            $Email.To.Add($Recipient.User+"@"+$Domain)   #--[ Each other user to get the email when not debugging ]--
         }
     }
     $Alternates = @{}  
