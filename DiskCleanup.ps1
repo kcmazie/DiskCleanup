@@ -35,25 +35,26 @@ Param(
                    :   not limited to the following:
                    : 
     Last Update by : Kenneth C. Mazie                                           
-   Version History : v1.0 - 10-16-15 - Original 
-    Change History : v2.0 - 10-27-15 - numerous bug fixes 
-                   : v2.1 - 11-09-15 - edited log.  now outputs html.
-                   : v2.2 - 07-08-20 - Added details option        
-                   : v3.0 - 06-24-22 - Corrected script folder reference. Added send only if successful option. Corrected for PowerShell 
-                   :                   v6 and above.  Fixed log file creation and removal. Edited log format.
-                   : v3.1 - 08-03-22 - Added additional info to identify sending system.  Changed log file name.  Added debug messages.
-                   :                   Added script version to log.
-                   : v3.2 - 09-20-22 - Added percentages to email results.
-                   : v3.3 - 10-03-22 - Added percentage change to email results.
-                   : v3.4 - 10-18-22 - Added summary to header.
-                   : v3.5 - 10-26-22 - Added script root path descrimination for PS versions prior to v3
-                   : v3.6 - 11-16-22 - Added report header colorization to match disk space changes for report quick glance. 
-                   : v3.7 - 05-09-23 - Added ASCII characters to email subject for quick glance results.  Moved email away from
-                   :                   function.  Reordered script sections.  Fixed minor typos.
-                   : v3.8 - 05-11-23 - Removed invalid characters from email subject.  Moved settings out to XML file.
+   Version History : v1.00 - 10-16-15 - Original 
+    Change History : v2.00 - 10-27-15 - numerous bug fixes 
+                   : v2.10 - 11-09-15 - edited log.  now outputs html.
+                   : v2.20 - 07-08-20 - Added details option        
+                   : v3.00 - 06-24-22 - Corrected script folder reference. Added send only if successful option. Corrected for PowerShell 
+                   :                    v6 and above.  Fixed log file creation and removal. Edited log format.
+                   : v3.10 - 08-03-22 - Added additional info to identify sending system.  Changed log file name.  Added debug messages.
+                   :                    Added script version to log.
+                   : v3.20 - 09-20-22 - Added percentages to email results.
+                   : v3.30 - 10-03-22 - Added percentage change to email results.
+                   : v3.40 - 10-18-22 - Added summary to header.
+                   : v3.50 - 10-26-22 - Added script root path descrimination for PS versions prior to v3
+                   : v3.60 - 11-16-22 - Added report header colorization to match disk space changes for report quick glance. 
+                   : v3.70 - 05-09-23 - Added ASCII characters to email subject for quick glance results.  Moved email away from
+                   :                    function.  Reordered script sections.  Fixed minor typos.
+                   : v3.80 - 05-11-23 - Removed invalid characters from email subject.  Moved settings out to XML file.
+                   : v3.90 - 05-12-23 - Added checks for PS version to aloow running on older OS ver.                   
 ==============================================================================#>
 
-$ScriptVer = "v3.8"
+$ScriptVer = "v3.90"
 #Requires -version 2
 Clear-Host 
 
@@ -75,16 +76,24 @@ If ($Debug){
 }
 
 #--[ Operational Variables ]--
-$ScriptName = $MyInvocation.MyCommand.Name   #--[ Not used currently ]--
-$ScriptFullPath = $PSScriptRoot+"\"+$MyInvocation.MyCommand.Name 
-$ConfigFile = $Script:ScriptFullPath.Split(".")[0]+".xml"
+$ScriptName = $MyInvocation.MyCommand.Name.Split(".")[0]  
+If ($PSVersionTable.PSVersion.Major -lt 3){
+    $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+    $WorkDir = "c:\windows\temp"
+    $ThisIP = [net.dns]::GetHostAddresses("") | Select-Object -ExpandProperty IPAddressToString | Where-Object {$_ -notlike "*::*"}
+}Else{
+    $scriptPath = $PSScriptRoot
+    $WorkDir = $PSScriptRoot
+    $ThisIP = (Get-NetIPAddress | Where-Object -FilterScript { $_.IPAddress -Like $IPPattern }).IPAddress  
+}
+$ConfigFile = $ScriptPath+"\"+$ScriptName+".xml"
 $SendIt = $false
 $Datetime = Get-Date -Format "MM-dd-yyyy_HHmm"
 $Target = $Env:COMPUTERNAME
 $Email = New-Object System.Net.Mail.MailMessage
 
 #--[ Read and load configuration file ]-----------------------------------------
-If (!(Test-Path $Script:ConfigFile)){       #--[ Error out if configuration file doesn't exist ]--
+If (!(Test-Path $ConfigFile)){       #--[ Error out if configuration file doesn't exist ]--
     Write-Host "---------------------------------------------" -ForegroundColor Red
     Write-Host "--[ MISSING CONFIG FILE. Script aborted. ]--" -ForegroundColor Red
     Write-Host "---------------------------------------------" -ForegroundColor Red    
@@ -111,16 +120,6 @@ If (!(Test-Path $Script:ConfigFile)){       #--[ Error out if configuration file
     }    
 }
 
-If ($PSVersionTable.PSVersion.Major -lt 3){
-    $WorkDir = "c:\windows\temp"
-}Else{
-    $WorkDir = $PSScriptRoot
-}
-If ($PSVersionTable.PSVersion.Major -gt "2"){
-    $ThisIP = (Get-NetIPAddress | Where-Object -FilterScript { $_.IPAddress -Like $IPPattern }).IPAddress  
-}Else{
-    $ThisIP = [net.dns]::GetHostAddresses("") | Select-Object -ExpandProperty IPAddressToString | Where-Object {$_ -notlike "*::*"}
-}
 If (!(Test-path -Path $WorkDir)){[System.IO.Directory]::CreateDirectory($WorkDir) | Out-Null}                 #--[ Create the scripts folder if needed ]--
 If (!(Test-path -Path "$WorkDir\logs")){[System.IO.Directory]::CreateDirectory("$WorkDir\logs") | Out-Null}   #--[ Create the logs folder if needed ]--
 $LogFile = $WorkDir+"\logs\DiskCleanupLog-"+$DateTime+".html"                                                          #--[ Define the current log file ]--
