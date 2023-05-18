@@ -40,21 +40,23 @@ Param(
                    : v2.10 - 11-09-15 - edited log.  now outputs html.
                    : v2.20 - 07-08-20 - Added details option        
                    : v3.00 - 06-24-22 - Corrected script folder reference. Added send only if successful option. Corrected for PowerShell 
-                   :                    v6 and above.  Fixed log file creation and removal. Edited log format.
+                   :                   v6 and above.  Fixed log file creation and removal. Edited log format.
                    : v3.10 - 08-03-22 - Added additional info to identify sending system.  Changed log file name.  Added debug messages.
-                   :                    Added script version to log.
+                   :                   Added script version to log.
                    : v3.20 - 09-20-22 - Added percentages to email results.
                    : v3.30 - 10-03-22 - Added percentage change to email results.
                    : v3.40 - 10-18-22 - Added summary to header.
                    : v3.50 - 10-26-22 - Added script root path descrimination for PS versions prior to v3
                    : v3.60 - 11-16-22 - Added report header colorization to match disk space changes for report quick glance. 
                    : v3.70 - 05-09-23 - Added ASCII characters to email subject for quick glance results.  Moved email away from
-                   :                    function.  Reordered script sections.  Fixed minor typos.
+                   :                   function.  Reordered script sections.  Fixed minor typos.
                    : v3.80 - 05-11-23 - Removed invalid characters from email subject.  Moved settings out to XML file.
-                   : v3.90 - 05-12-23 - Added checks for PS version to aloow running on older OS ver.                   
+                   : v3.90 - 05-12-23 - Added checks for PS version to aloow running on older OS ver.  
+                   : v3.91 - 05-15-23 - Corrected issue with email subject when space grows.
+                   : v3.92 - 05-18-23 - Corrected a typo with recalling recipients from XML
 ==============================================================================#>
 
-$ScriptVer = "v3.90"
+$ScriptVer = "v3.92"
 #Requires -version 2
 Clear-Host 
 
@@ -76,24 +78,28 @@ If ($Debug){
 }
 
 #--[ Operational Variables ]--
-$ScriptName = $MyInvocation.MyCommand.Name.Split(".")[0]  
-If ($PSVersionTable.PSVersion.Major -lt 3){
-    $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $WorkDir = "c:\windows\temp"
-    $ThisIP = [net.dns]::GetHostAddresses("") | Select-Object -ExpandProperty IPAddressToString | Where-Object {$_ -notlike "*::*"}
-}Else{
-    $scriptPath = $PSScriptRoot
-    $WorkDir = $PSScriptRoot
-    $ThisIP = (Get-NetIPAddress | Where-Object -FilterScript { $_.IPAddress -Like $IPPattern }).IPAddress  
-}
-$ConfigFile = $ScriptPath+"\"+$ScriptName+".xml"
+$ScriptName = $MyInvocation.MyCommand.Name   #--[ Not used currently ]--
+$ScriptFullPath = $PSScriptRoot+"\"+$MyInvocation.MyCommand.Name 
+$ConfigFile = $Script:ScriptFullPath.Split(".")[0]+".xml"
 $SendIt = $false
 $Datetime = Get-Date -Format "MM-dd-yyyy_HHmm"
 $Target = $Env:COMPUTERNAME
 $Email = New-Object System.Net.Mail.MailMessage
 
+Function StatusMsg ($Msg, $Color, $Debug){
+    If ($Null -eq $Color){
+        $Color = "Magenta"
+    }
+    If ($Debug){
+        Write-Host "-- Script Debug: $Msg" -ForegroundColor $Color
+    }Else{
+        Write-Host "-- Script Status: $Msg" -ForegroundColor $Color
+    }
+    $Msg = ""
+}
+
 #--[ Read and load configuration file ]-----------------------------------------
-If (!(Test-Path $ConfigFile)){       #--[ Error out if configuration file doesn't exist ]--
+If (!(Test-Path $Script:ConfigFile)){       #--[ Error out if configuration file doesn't exist ]--
     Write-Host "---------------------------------------------" -ForegroundColor Red
     Write-Host "--[ MISSING CONFIG FILE. Script aborted. ]--" -ForegroundColor Red
     Write-Host "---------------------------------------------" -ForegroundColor Red    
@@ -103,10 +109,13 @@ If (!(Test-Path $ConfigFile)){       #--[ Error out if configuration file doesn'
     $IPPattern = $Configuration.Settings.IPPattern   #--[ Used for system IP identification ]--
     $SmtpServer = $Configuration.Settings.SMTPServer
     $Domain = $Configuration.Settings.Domain
-    $Email.To.Add($Configuration.Settings.DebugUser+"@"+$domain)  #--[ The "main" user who always gets an email ]--
-    If (!($Debug)){
-        ForEach($Recipient in $Configuration.Settings.Users){   
-            $Email.To.Add($Recipient.User+"@"+$Domain)   #--[ Each other user to get the email when not debugging ]--
+    $DebugUser = $Configuration.Settings.DebugUser+"@"+$domain
+    $Email.To.Add($DebugUser)  #--[ The "main" user who always gets an email ]--
+    ForEach($Recipient in $Configuration.Settings.Users.User){   
+        If (!($Debug)){
+            $Email.To.Add("$Recipient@$Domain")   #--[ Each other user to get the email when not debugging ]--
+        }Else{
+            StatusMsg "Email recipient = $Recipient" yellow debug
         }
     }
     $Alternates = @{}  
@@ -120,11 +129,29 @@ If (!(Test-Path $ConfigFile)){       #--[ Error out if configuration file doesn'
     }    
 }
 
+If ($PSVersionTable.PSVersion.Major -lt 3){
+    $WorkDir = "c:\windows\temp"
+}Else{
+    $WorkDir = $PSScriptRoot
+}
+If ($PSVersionTable.PSVersion.Major -gt "2"){
+    $ThisIP = (Get-NetIPAddress | Where-Object -FilterScript { $_.IPAddress -Like $IPPattern }).IPAddress  
+}Else{
+    $ThisIP = [net.dns]::GetHostAddresses("") | Select-Object -ExpandProperty IPAddressToString | Where-Object {$_ -notlike "*::*"}
+}
 If (!(Test-path -Path $WorkDir)){[System.IO.Directory]::CreateDirectory($WorkDir) | Out-Null}                 #--[ Create the scripts folder if needed ]--
 If (!(Test-path -Path "$WorkDir\logs")){[System.IO.Directory]::CreateDirectory("$WorkDir\logs") | Out-Null}   #--[ Create the logs folder if needed ]--
 $LogFile = $WorkDir+"\logs\DiskCleanupLog-"+$DateTime+".html"                                                          #--[ Define the current log file ]--
 #--[ This next line detects the log files and deletes all except the most recent 9 ]--
 Get-ChildItem -Path "$WorkDir\logs" -Include * | Where-Object { -not $_.PsIsContainer } | Where-Object { $_.name -like "*.html"} | Sort-Object -Descending -Property CreationTime | Select-Object -Skip 9 | Remove-Item         
+
+If ($Debug){
+    StatusMsg "Debug user = $DebugUser" yellow debug
+    StatusMsg "IP pattern = $IPPattern" yellow debug
+    StatusMsg "SMTP server = $SmtpServer" yellow debug
+    StatusMsg "List of target systems =" yellow debug
+    $Alternates 
+}
 
 $FileTypes = ""
 $LogData = ""
@@ -272,8 +299,8 @@ If ($InitialFree -gt $FinalFree){                                 #--[ Free spac
     $Delta = [Math]::Round(($FinalFree-$InitialFree),2)
     $HeaderData += '<font color=green>'
     $SummaryData += "<font color=green>  -- Free disk space increase of $Delta GB<br>"
+	$Email.Subject = "(>) Diskspace Cleanup Results on $ENV:computername"
     If ($Console -or $Debug){
-        $Email.Subject = "(>) Diskspace Cleanup Results on $ENV:computername"
         write-host "-- Free disk space increase of $Delta GB" -ForegroundColor Green
     }
 }Else{
