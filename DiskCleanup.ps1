@@ -54,9 +54,10 @@ Param(
                    : v3.90 - 05-12-23 - Added checks for PS version to aloow running on older OS ver.  
                    : v3.91 - 05-15-23 - Corrected issue with email subject when space grows.
                    : v3.92 - 05-18-23 - Corrected a typo with recalling recipients from XML
+                   : v3.93 - 05-19-23 - Added PS version check to detect script path for older servers
 ==============================================================================#>
 
-$ScriptVer = "v3.92"
+$ScriptVer = "v3.93"
 #Requires -version 2
 Clear-Host 
 
@@ -79,8 +80,13 @@ If ($Debug){
 
 #--[ Operational Variables ]--
 $ScriptName = $MyInvocation.MyCommand.Name   #--[ Not used currently ]--
-$ScriptFullPath = $PSScriptRoot+"\"+$MyInvocation.MyCommand.Name 
-$ConfigFile = $Script:ScriptFullPath.Split(".")[0]+".xml"
+If ($PSVersionTable.PSVersion.Major -lt 3){
+    $ScriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+}Else{
+    $ScriptPath = $PSScriptRoot
+}
+$ScriptFullPath = $ScriptPath+"\"+$MyInvocation.MyCommand.Name 
+$ConfigFile = $ScriptFullPath.Split(".")[0]+".xml"
 $SendIt = $false
 $Datetime = Get-Date -Format "MM-dd-yyyy_HHmm"
 $Target = $Env:COMPUTERNAME
@@ -99,7 +105,7 @@ Function StatusMsg ($Msg, $Color, $Debug){
 }
 
 #--[ Read and load configuration file ]-----------------------------------------
-If (!(Test-Path $Script:ConfigFile)){       #--[ Error out if configuration file doesn't exist ]--
+If (!(Test-Path $ConfigFile)){       #--[ Error out if configuration file doesn't exist ]--
     Write-Host "---------------------------------------------" -ForegroundColor Red
     Write-Host "--[ MISSING CONFIG FILE. Script aborted. ]--" -ForegroundColor Red
     Write-Host "---------------------------------------------" -ForegroundColor Red    
